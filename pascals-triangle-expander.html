@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pascal's Triangle Expander</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: blue lesson banner, then a two-panel workspace — the triangle on the left, the
+     step-by-step expansion grid on the right — stacking to one column on phones. */
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --ink: #1f2937;
+    --muted: #5b6475;
+    --line: #d7dce6;
+    --accent: #2f5bd3;
+    --accent-ink: #ffffff;
+    --accent-soft: #e8eefc;
+    --first: #2f5bd3;      /* first term (ax) */
+    --first-soft: #e8eefc;
+    --second: #b4531a;     /* second term (b)  */
+    --second-soft: #fdeee3;
+    --coef: #6b3fb8;       /* Pascal coefficients */
+    --coef-soft: #f0e9fb;
+    --good: #1b7f3b;
+    --good-soft: #e3f5e8;
+    --bad: #b42318;
+    --bad-soft: #fde8e6;
+    --ghost: #c3c9d6;
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --font-math: "Cambria Math", Cambria, Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11151f; --card: #1a2030; --ink: #e6e9f2; --muted: #a2abbe; --line: #2e3750;
+      --accent: #6f93ff; --accent-ink: #0d1222; --accent-soft: #232f52;
+      --first: #8eabff; --first-soft: #232f52;
+      --second: #f39a5f; --second-soft: #3a2619;
+      --coef: #c3a2ff; --coef-soft: #2f2448;
+      --good: #5fd38a; --good-soft: #193524; --bad: #ff8a7d; --bad-soft: #3d1c19;
+      --ghost: #4a5470;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11151f; --card: #1a2030; --ink: #e6e9f2; --muted: #a2abbe; --line: #2e3750;
+    --accent: #6f93ff; --accent-ink: #0d1222; --accent-soft: #232f52;
+    --first: #8eabff; --first-soft: #232f52;
+    --second: #f39a5f; --second-soft: #3a2619;
+    --coef: #c3a2ff; --coef-soft: #2f2448;
+    --good: #5fd38a; --good-soft: #193524; --bad: #ff8a7d; --bad-soft: #3d1c19;
+    --ghost: #4a5470;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  .stack { display: grid; gap: 18px; min-width: 0; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17px/1.5 var(--font-ui);
+  }
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding-block: 20px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    gap: 18px;
+  }
+  header.top {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: 14px;
+    padding: 18px 22px;
+  }
+  header.top h1 { margin: 0 0 4px; font-size: 1.45rem; text-wrap: balance; }
+  header.top p { margin: 0; opacity: .95; max-width: 70ch; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px 18px;
+    min-width: 0;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 1.15rem; text-wrap: balance; }
+  .sub { color: var(--muted); font-size: .92rem; margin: 0 0 12px; }
+  .math { font-family: var(--font-math); }
+  .math i, .term i { font-style: italic; }
+  sup { font-size: .68em; line-height: 0; }
+
+  /* ---------- builder ---------- */
+  .builder { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; }
+  .expr {
+    font-family: var(--font-math);
+    font-size: 2rem;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
+  }
+  .expr .t1 { color: var(--first); }
+  .expr .t2 { color: var(--second); }
+  .expr sup { font-size: .55em; color: var(--coef); font-weight: 700; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+  .ctl { display: grid; gap: 3px; font-size: .82rem; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--card); }
+  .stepper button {
+    border: 0; background: var(--accent-soft); color: var(--accent); font: 700 1.05rem var(--font-ui);
+    width: 34px; cursor: pointer;
+  }
+  .stepper input {
+    width: 46px; border: 0; text-align: center; font: 600 1.05rem var(--font-math);
+    background: var(--card); color: var(--ink); -moz-appearance: textfield;
+  }
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  select, .btn, .chip {
+    font: 600 .95rem var(--font-ui);
+    border-radius: 9px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); padding: 6px 12px;
+  }
+  .btn { cursor: pointer; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; font-size: .88rem; color: var(--muted); }
+  .chip { cursor: pointer; font-family: var(--font-math); font-weight: 500; padding: 3px 10px; }
+  .chip:hover { border-color: var(--accent); }
+
+  /* ---------- workspace ---------- */
+  .workspace { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 18px; align-items: start; }
+  @media (max-width: 920px) { .workspace { grid-template-columns: minmax(0, 1fr); } }
+
+  .tri-scroll { overflow-x: auto; padding-bottom: 4px; }
+  .triangle { display: grid; gap: 4px; justify-items: center; min-width: max-content; margin: 0 auto; padding-left: 56px; }
+  .trow { display: flex; gap: 4px; align-items: center; position: relative; }
+  .trow .rlabel {
+    position: absolute; right: calc(100% + 8px); font-size: .72rem; color: var(--muted);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .cell {
+    width: 38px; height: 32px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink);
+    font: 600 .9rem var(--font-ui); font-variant-numeric: tabular-nums;
+    cursor: pointer; padding: 0;
+  }
+  .cell:hover { border-color: var(--coef); }
+  .trow.active .cell { background: var(--coef-soft); border-color: var(--coef); color: var(--coef); font-weight: 800; }
+  .cell.parent { background: var(--second-soft); border-color: var(--second); color: var(--second); }
+  .cell.focus { outline: 3px solid var(--coef); outline-offset: 1px; }
+  .tri-note {
+    margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--coef-soft);
+    font-size: .92rem; min-height: 2.6em;
+  }
+  .tri-note b { color: var(--coef); }
+  .tri-legend { margin: 10px 0 0; padding-left: 20px; font-size: .9rem; color: var(--muted); }
+  .tri-legend li + li { margin-top: 2px; }
+
+  /* ---------- steps ---------- */
+  .steps { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; counter-reset: s; }
+  .steps li {
+    counter-increment: s; display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: start;
+    padding: 6px 10px; border-radius: 9px; color: var(--muted); font-size: .94rem;
+  }
+  .steps li::before {
+    content: counter(s); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--line); color: var(--ink); font-weight: 700; font-size: .8rem;
+  }
+  .steps li.done { color: var(--ink); }
+  .steps li.done::before { background: var(--good-soft); color: var(--good); }
+  .steps li.now { background: var(--accent-soft); color: var(--ink); }
+  .steps li.now::before { background: var(--accent); color: var(--accent-ink); }
+  .stepbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+
+  .grid-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table.build { border-collapse: collapse; width: 100%; font-family: var(--font-math); font-size: 1.05rem; }
+  table.build th[scope="row"] {
+    font: 600 .8rem var(--font-ui); color: var(--muted); text-align: left; padding: 8px 10px;
+    min-width: 132px; max-width: 170px; position: sticky; left: 0; background: var(--card);
+    border-right: 1px solid var(--line);
+  }
+  table.build td { text-align: center; padding: 8px 10px; white-space: nowrap; border-top: 1px solid var(--line); }
+  table.build tr:first-child td, table.build tr:first-child th { border-top: 0; }
+  table.build th[scope="row"] { border-top: 1px solid var(--line); }
+  table.build tr:first-child th[scope="row"] { border-top: 0; }
+  tr.r-coef td { color: var(--coef); font-weight: 700; font-family: var(--font-ui); }
+  tr.r-first td { color: var(--first); }
+  tr.r-second td { color: var(--second); }
+  tr.r-term td { font-weight: 700; background: var(--good-soft); color: var(--good); }
+  td.hide { color: var(--ghost) !important; background: transparent !important; font-weight: 400 !important; }
+  td.lit { background: var(--accent-soft); }
+  tr.r-term td.lit { background: var(--good-soft); outline: 2px solid var(--good); outline-offset: -2px; }
+  .eq { color: var(--muted); font-size: .85em; }
+
+  .explain { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); font-size: .95rem; }
+  .answer {
+    margin-top: 14px; padding: 14px 16px; border-radius: 12px; border: 2px dashed var(--ghost);
+    font-family: var(--font-math); font-size: 1.3rem; overflow-x: auto; color: var(--ghost);
+  }
+  .answer.show { border: 2px solid var(--good); background: var(--good-soft); color: var(--ink); }
+  .answer .lbl { font: 700 .8rem var(--font-ui); letter-spacing: .04em; text-transform: uppercase; color: var(--good); display: block; margin-bottom: 4px; }
+  .answer:not(.show) .lbl { color: var(--muted); }
+
+  /* ---------- practice ---------- */
+  .practice-q { font-family: var(--font-math); font-size: 1.45rem; margin: 4px 0 12px; }
+  .blanks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; font-family: var(--font-math); font-size: 1.2rem; }
+  .blanks input {
+    width: 72px; padding: 5px 6px; border-radius: 8px; border: 2px solid var(--line);
+    font: 600 1.05rem var(--font-math); text-align: center; background: var(--card); color: var(--ink);
+  }
+  .blanks input.right { border-color: var(--good); background: var(--good-soft); }
+  .blanks input.wrong { border-color: var(--bad); background: var(--bad-soft); }
+  .blanks .plus { color: var(--muted); padding: 0 2px; }
+  .pbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+  .feedback { font-size: .95rem; font-weight: 600; }
+  .feedback.good { color: var(--good); }
+  .feedback.bad { color: var(--bad); }
+  /* ---------- discovery ---------- */
+  .part {
+    font: 700 .8rem var(--font-ui); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin: 8px 2px -6px;
+  }
+  .disc { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 28px; align-items: center; }
+  @media (max-width: 760px) { .disc { grid-template-columns: minmax(0, 1fr); } }
+  .expansions { display: grid; gap: 10px; font-family: var(--font-math); font-size: 1.2rem; min-width: 0; }
+  .expansions div { overflow-x: auto; white-space: nowrap; }
+  .expansions .lhs { color: var(--muted); }
+  .tri-in { display: grid; gap: 6px; justify-items: center; padding-left: 52px; overflow-x: auto; }
+  .tri-in .r { display: flex; gap: 6px; align-items: center; position: relative; }
+  .tri-in .r small { position: absolute; right: calc(100% + 8px); white-space: nowrap; color: var(--muted); font-size: .72rem; }
+  .tri-in input, .qin {
+    width: 46px; height: 38px; text-align: center; border-radius: 8px; border: 2px solid var(--line);
+    font: 700 1.05rem var(--font-ui); background: var(--card); color: var(--coef);
+  }
+  .tri-in input:disabled { color: var(--muted); background: var(--bg); border-color: var(--line); }
+  .tri-in input.right, .qin.right, select.right { border-color: var(--good); background: var(--good-soft); }
+  .tri-in input.wrong, .qin.wrong, select.wrong { border-color: var(--bad); background: var(--bad-soft); }
+  .hint { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--second-soft); font-size: .94rem; }
+  .qlist { margin: 0; padding-left: 22px; display: grid; gap: 12px; }
+  .qlist li { padding-left: 4px; }
+  .qlist select { margin-left: 4px; }
+  .qin { width: 52px; height: 34px; margin: 0 3px; }
+  .unlock {
+    border: 2px dashed var(--ghost); border-radius: 14px; padding: 18px; text-align: center; color: var(--muted);
+  }
+  .unlock b { color: var(--ink); }
+  .linkbtn { background: none; border: 0; color: var(--accent); font: inherit; font-size: .88rem; text-decoration: underline; cursor: pointer; padding: 0; }
+  .celebrate {
+    background: var(--good-soft); border: 2px solid var(--good); border-radius: 14px; padding: 14px 18px;
+  }
+  .celebrate h2 { color: var(--good); }
+  .why-h { margin-top: 18px !important; }
+  .why-cap { font-size: .92rem; margin: 10px 0 0; }
+  tr.r-x td { color: var(--first); }
+  tr.r-y td { color: var(--second); }
+  td.empty { color: var(--ghost); }
+  @media (prefers-reduced-motion: no-preference) {
+    td, .cell, .steps li { transition: background-color .2s, color .2s, border-color .2s; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>Pascal's Triangle Expander</h1>
+    <p>Multiplying out (x + y)⁵ by hand takes a long time. First, look for a pattern in some smaller powers. Then use that pattern to expand any binomial quickly.</p>
+  </header>
+
+  <p class="part">Part 1 · Discover the pattern</p>
+
+  <!-- D1 -->
+  <section class="card" aria-labelledby="d1-h">
+    <h2 id="d1-h">A. Collect the numbers</h2>
+    <p class="sub">These are already multiplied out for you. Type the <b>coefficient</b> (the number in front) of every term into the boxes on the right, one row for each power.</p>
+    <div class="disc">
+      <div class="expansions" id="d1-exp"></div>
+      <div class="tri-in" id="d1-tri"></div>
+    </div>
+    <div class="pbar">
+      <button type="button" class="btn primary" id="d1-check">Check my work</button>
+      <button type="button" class="btn" id="d1-help">I need help</button>
+      <span class="feedback" id="d1-fb" aria-live="polite"></span>
+    </div>
+    <p class="hint" id="d1-hint" hidden>If no number is written in front of a term, its coefficient is <b>1</b>. So <span class="math"><i>x</i><sup>2</sup></span> means <span class="math">1<i>x</i><sup>2</sup></span>. The row for <span class="math">(<i>x</i> + <i>y</i>)<sup>0</sup> = 1</span> has just one number: 1.</p>
+  </section>
+
+  <!-- D2 -->
+  <section class="card" aria-labelledby="d2-h" id="d2" hidden>
+    <h2 id="d2-h">B. Spot the patterns</h2>
+    <p class="sub">Look at your expansions and your triangle of numbers to answer these questions.</p>
+    <ol class="qlist">
+      <li>In <span class="math">(<i>x</i> + <i>y</i>)<sup>3</sup></span>, the powers of <span class="math"><i>x</i></span>
+        <select id="q1" aria-label="powers of x"><option value="">choose…</option><option value="down">go down: 3, 2, 1, 0</option><option value="up">go up: 0, 1, 2, 3</option><option value="same">stay the same</option></select></li>
+      <li>In <span class="math">(<i>x</i> + <i>y</i>)<sup>3</sup></span>, the powers of <span class="math"><i>y</i></span>
+        <select id="q2" aria-label="powers of y"><option value="">choose…</option><option value="down">go down: 3, 2, 1, 0</option><option value="up">go up: 0, 1, 2, 3</option><option value="same">stay the same</option></select></li>
+      <li>In <span class="math">3<i>x</i><sup>2</sup><i>y</i></span>, the exponents are 2 and 1. In every term of <span class="math">(<i>x</i> + <i>y</i>)<sup>3</sup></span>, the exponents add up to <input class="qin" id="q3" inputmode="numeric" aria-label="exponent sum">.</li>
+      <li><span class="math">(<i>x</i> + <i>y</i>)<sup>3</sup></span> has <input class="qin" id="q4" inputmode="numeric" aria-label="number of terms"> terms. So <span class="math">(<i>x</i> + <i>y</i>)<sup><i>n</i></sup></span> will have
+        <select id="q5" aria-label="number of terms for n"><option value="">choose…</option><option value="n">n terms</option><option value="n1">n + 1 terms</option><option value="2n">2n terms</option></select></li>
+      <li>Every row of your triangle starts and ends with <input class="qin" id="q6" inputmode="numeric" aria-label="row ends">.</li>
+      <li>Look at the <b>3</b> in row 3. Which two numbers sit right above it in row 2? <input class="qin" id="q7" inputmode="numeric" aria-label="first number above"> + <input class="qin" id="q8" inputmode="numeric" aria-label="second number above"> = 3</li>
+      <li>Look at the <b>2</b> in row 2. Which two numbers sit right above it in row 1? <input class="qin" id="q9" inputmode="numeric" aria-label="first number above"> + <input class="qin" id="q10" inputmode="numeric" aria-label="second number above"> = 2</li>
+    </ol>
+    <div class="pbar">
+      <button type="button" class="btn primary" id="d2-check">Check my work</button>
+      <button type="button" class="btn" id="d2-help">I need help</button>
+      <span class="feedback" id="d2-fb" aria-live="polite"></span>
+    </div>
+    <p class="hint" id="d2-hint" hidden>Write the triangle with each row centered under the one above it. Every number sits between two numbers in the row above. Questions 6 and 7 ask you to add those two numbers.</p>
+  </section>
+
+  <!-- D3 -->
+  <section class="card" aria-labelledby="d3-h" id="d3" hidden>
+    <h2 id="d3-h">C. Predict the next rows</h2>
+    <p class="sub">Use your patterns to predict the coefficients of <span class="math">(<i>x</i> + <i>y</i>)<sup>4</sup></span> and <span class="math">(<i>x</i> + <i>y</i>)<sup>5</sup></span> <b>without multiplying</b>.</p>
+    <div class="tri-in" id="d3-tri"></div>
+    <div class="pbar">
+      <button type="button" class="btn primary" id="d3-check">Check my prediction</button>
+      <button type="button" class="btn" id="d3-help">I need help</button>
+      <span class="feedback" id="d3-fb" aria-live="polite"></span>
+    </div>
+    <p class="hint" id="d3-hint" hidden>Start and end each new row with 1. For each number in between, add the two numbers right above it. Row 4 begins 1, 1 + 3, …</p>
+    <div id="d3-why" hidden>
+      <h2 class="why-h">Why does adding work?</h2>
+      <p class="sub">Here is <span class="math">(<i>x</i> + <i>y</i>)<sup>4</sup> = (<i>x</i> + <i>y</i>)(<i>x</i> + <i>y</i>)<sup>3</sup></span> multiplied out. Multiply every term of row 3 by <span class="math"><i>x</i></span>, then by <span class="math"><i>y</i></span>. Like terms line up in the same column.</p>
+      <div class="grid-scroll"><table class="build" id="why"></table></div>
+      <p class="why-cap">Every column gets one term from the <span style="color:var(--first)">× <i>x</i></span> row and one from the <span style="color:var(--second)">× <i>y</i></span> row. Those are the two numbers above it in the triangle, which is why we add them.</p>
+    </div>
+  </section>
+
+  <div class="unlock" id="locked">
+    <b>The expander unlocks once you finish part C.</b><br>
+    <button type="button" class="linkbtn" id="skip">Already did this? Skip ahead</button>
+  </div>
+
+  <div id="unlocked" class="stack" hidden>
+  <section class="celebrate" aria-labelledby="c-h">
+    <h2 id="c-h">You found Pascal's triangle</h2>
+    <p style="margin:0">The triangle of numbers you built is called <b>Pascal's triangle</b>. Row <span class="math"><i>n</i></span> gives the coefficients of <span class="math">(<i>x</i> + <i>y</i>)<sup><i>n</i></sup></span>. Next, you'll use it on harder binomials like <span class="math">(2<i>x</i> − 3)<sup>4</sup></span>.</p>
+  </section>
+
+  <p class="part">Part 2 · Use the triangle</p>
+
+  <!-- builder -->
+  <section class="card" aria-labelledby="b-h">
+    <h2 id="b-h">1. Build your binomial</h2>
+    <div class="builder">
+      <div class="expr" id="expr" aria-live="polite"></div>
+      <div class="controls">
+        <div class="ctl">first term: <span class="math">a</span>
+          <span class="stepper"><button type="button" data-dec="a" aria-label="decrease a">−</button><input id="in-a" type="number" min="-9" max="9" value="2" aria-label="a"><button type="button" data-inc="a" aria-label="increase a">+</button></span>
+        </div>
+        <div class="ctl">second term: <span class="math">b</span>
+          <span class="stepper"><button type="button" data-dec="b" aria-label="decrease b">−</button><input id="in-b" type="number" min="-9" max="9" value="-3" aria-label="b"><button type="button" data-inc="b" aria-label="increase b">+</button></span>
+        </div>
+        <div class="ctl">power: <span class="math">n</span>
+          <span class="stepper"><button type="button" data-dec="n" aria-label="decrease n">−</button><input id="in-n" type="number" min="0" max="10" value="4" aria-label="n"><button type="button" data-inc="n" aria-label="increase n">+</button></span>
+        </div>
+        <label class="ctl" for="in-mode">second term is
+          <select id="in-mode">
+            <option value="num">a number (b)</option>
+            <option value="y">a variable (b·y)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="presets">Try:
+      <button type="button" class="chip" data-p="1,1,3,y">(x + y)³</button>
+      <button type="button" class="chip" data-p="1,2,4,num">(x + 2)⁴</button>
+      <button type="button" class="chip" data-p="1,-1,5,num">(x − 1)⁵</button>
+      <button type="button" class="chip" data-p="2,-3,4,num">(2x − 3)⁴</button>
+      <button type="button" class="chip" data-p="3,-2,3,y">(3x − 2y)³</button>
+      <button type="button" class="chip" data-p="1,1,6,y">(x + y)⁶</button>
+    </div>
+  </section>
+
+  <div class="workspace">
+    <!-- triangle -->
+    <section class="card" aria-labelledby="t-h">
+      <h2 id="t-h">2. Pascal's triangle</h2>
+      <p class="sub">Click any number to use that row. Hover or tap a number to see where it comes from.</p>
+      <div class="tri-scroll"><div class="triangle" id="triangle"></div></div>
+      <div class="tri-note" id="tri-note"></div>
+      <ul class="tri-legend">
+        <li>Each row starts and ends with <b>1</b>.</li>
+        <li>Every other number is the <b>sum of the two numbers above it</b>.</li>
+        <li>For a power of <span class="math"><i>n</i></span>, use the row that starts <span class="math">1, <i>n</i>, …</span> (row <span class="math"><i>n</i></span>). It has <span class="math"><i>n</i> + 1</span> numbers, so the answer has <span class="math"><i>n</i> + 1</span> terms.</li>
+      </ul>
+    </section>
+
+    <!-- walkthrough -->
+    <section class="card" aria-labelledby="w-h">
+      <h2 id="w-h">3. Expand it step by step</h2>
+      <ol class="steps" id="steps">
+        <li><span>Write down <b>row <span class="nval">n</span></b> of Pascal's triangle. These are the coefficients.</span></li>
+        <li><span>Write the <b>first term</b> with powers going <b>down</b> from <span class="nval">n</span> to 0.</span></li>
+        <li><span>Write the <b>second term</b> with powers going <b>up</b> from 0 to <span class="nval">n</span>.</span></li>
+        <li><span><b>Simplify</b> each power.</span></li>
+        <li><span><b>Multiply</b> down each column to get one term.</span></li>
+        <li><span><b>Add</b> the terms together.</span></li>
+      </ol>
+      <div class="stepbar">
+        <button type="button" class="btn" id="back">← Back</button>
+        <button type="button" class="btn primary" id="next">Next step →</button>
+        <button type="button" class="btn" id="all">Show all steps</button>
+        <button type="button" class="btn" id="reset">Start over</button>
+      </div>
+      <div class="grid-scroll"><table class="build" id="build"></table></div>
+      <p class="explain" id="explain"></p>
+      <div class="answer" id="answer"></div>
+    </section>
+  </div>
+
+  <!-- practice -->
+  <section class="card" aria-labelledby="p-h">
+    <h2 id="p-h">4. Your turn</h2>
+    <p class="sub">Fill in the coefficient of each term (include a − sign if it is negative). Then check your work.</p>
+    <div class="practice-q" id="pq"></div>
+    <div class="blanks" id="blanks"></div>
+    <div class="pbar">
+      <button type="button" class="btn primary" id="pcheck">Check my work</button>
+      <button type="button" class="btn" id="pshow">Walk me through it</button>
+      <button type="button" class="btn" id="pnew">New problem</button>
+      <span class="feedback" id="pfb" aria-live="polite"></span>
+    </div>
+  </section>
+  </div><!-- /unlocked -->
+
+</div>
+
+<script>
+(() => {
+  const MAXN = 10;
+  const S = { a: 2, b: -3, n: 4, mode: 'num', step: 1 };
+  const STEPS = 6;
+  const $ = id => document.getElementById(id);
+
+  // ---------- math helpers ----------
+  const P = [[1]];
+  for (let i = 1; i <= MAXN; i++) {
+    const r = [1];
+    for (let k = 1; k < i; k++) r.push(P[i - 1][k - 1] + P[i - 1][k]);
+    r.push(1); P.push(r);
+  }
+  const MINUS = '−';
+  const num = v => (v < 0 ? MINUS : '') + Math.abs(v).toLocaleString('en-US');
+  const sup = p => `<sup>${p}</sup>`;
+  const v = name => `<i>${name}</i>`;
+  // monomial: coefficient times variables, e.g. -12x³y
+  function mono(c, vars) {
+    if (c === 0) return '0';
+    const parts = vars.filter(([, p]) => p > 0).map(([n, p]) => v(n) + (p > 1 ? sup(p) : ''));
+    if (!parts.length) return num(c);
+    const cs = c === 1 ? '' : c === -1 ? MINUS : num(c);
+    return cs + parts.join('');
+  }
+  function polyHTML(terms) { // terms: [{c, vars}]
+    return terms.map((t, i) => {
+      const m = mono(Math.abs(t.c), t.vars);
+      if (i === 0) return (t.c < 0 ? MINUS : '') + m;
+      return (t.c < 0 ? ` ${MINUS} ` : ' + ') + m;
+    }).join('');
+  }
+  // "(2x)", "x", "(−3)", "y", "(−2y)"
+  function firstBase(a) { return a === 1 ? v('x') : `(${mono(a, [['x', 1]])})`; }
+  function secondBase(b, mode) {
+    if (mode === 'y') return b === 1 ? v('y') : `(${mono(b, [['y', 1]])})`;
+    return b < 0 ? `(${num(b)})` : num(b);
+  }
+  function terms(a, b, n, mode) {
+    const out = [];
+    for (let k = 0; k <= n; k++) {
+      const p = n - k;
+      out.push({ k, p, C: P[n][k], A: a ** p, B: b ** k, c: P[n][k] * a ** p * b ** k,
+        vars: mode === 'y' ? [['x', p], ['y', k]] : [['x', p]] });
+    }
+    return out;
+  }
+
+  // ---------- builder ----------
+  const clamp = (key, val) => {
+    val = Math.round(Number(val));
+    if (!Number.isFinite(val)) val = S[key];
+    if (key === 'n') return Math.max(0, Math.min(MAXN, val));
+    val = Math.max(-9, Math.min(9, val));
+    if (val === 0) val = S[key] > 0 ? -1 : 1; // skip 0: it isn't a binomial
+    return val;
+  };
+  function setState(patch) {
+    Object.assign(S, patch);
+    $('in-a').value = S.a; $('in-b').value = S.b; $('in-n').value = S.n; $('in-mode').value = S.mode;
+    render();
+  }
+  ['a', 'b', 'n'].forEach(key => {
+    $('in-' + key).addEventListener('change', e => setState({ [key]: clamp(key, e.target.value), step: 1 }));
+  });
+  document.querySelectorAll('[data-inc],[data-dec]').forEach(btn => btn.addEventListener('click', () => {
+    const key = btn.dataset.inc || btn.dataset.dec;
+    const dir = btn.dataset.inc ? 1 : -1;
+    let val = S[key] + dir;
+    if (key !== 'n' && val === 0) val += dir;
+    setState({ [key]: clamp(key, val), step: 1 });
+  }));
+  $('in-mode').addEventListener('change', e => setState({ mode: e.target.value, step: 1 }));
+  document.querySelectorAll('[data-p]').forEach(btn => btn.addEventListener('click', () => {
+    const [a, b, n, mode] = btn.dataset.p.split(',');
+    setState({ a: +a, b: +b, n: +n, mode, step: 1 });
+  }));
+
+  function renderExpr() {
+    const { a, b, n, mode } = S;
+    const t1 = mono(a, [['x', 1]]);
+    const t2 = mode === 'y' ? mono(Math.abs(b), [['y', 1]]) : num(Math.abs(b));
+    $('expr').innerHTML = `(<span class="t1">${t1}</span>&nbsp;${b < 0 ? MINUS : '+'}&nbsp;<span class="t2">${t2}</span>)<sup>${n}</sup>`;
+  }
+
+  // ---------- triangle ----------
+  function renderTriangle() {
+    const tri = $('triangle');
+    tri.innerHTML = P.map((row, i) =>
+      `<div class="trow${i === S.n ? ' active' : ''}" data-row="${i}"><span class="rlabel">row ${i}</span>` +
+      row.map((x, k) => `<button type="button" class="cell" data-r="${i}" data-k="${k}" aria-label="row ${i}, number ${x}">${x}</button>`).join('') +
+      `</div>`).join('');
+    setNote(null);
+  }
+  function setNote(cell) {
+    document.querySelectorAll('.cell.parent, .cell.focus').forEach(c => c.classList.remove('parent', 'focus'));
+    if (!cell) {
+      $('tri-note').innerHTML = `Using <b>row ${S.n}</b>: <b>${P[S.n].join(', ')}</b>. These are the coefficients for a power of ${S.n}.`;
+      return;
+    }
+    const r = +cell.dataset.r, k = +cell.dataset.k;
+    cell.classList.add('focus');
+    if (k === 0 || k === r) {
+      $('tri-note').innerHTML = `Row ${r}: the ends of every row are always <b>1</b>.`;
+      return;
+    }
+    const left = tri(r - 1, k - 1), right = tri(r - 1, k);
+    left.classList.add('parent'); right.classList.add('parent');
+    $('tri-note').innerHTML = `Row ${r}: <b>${P[r][k]}</b> = ${P[r - 1][k - 1]} + ${P[r - 1][k]}, the two numbers right above it.`;
+  }
+  const tri = (r, k) => document.querySelector(`.cell[data-r="${r}"][data-k="${k}"]`);
+  $('triangle').addEventListener('mouseover', e => { const c = e.target.closest('.cell'); if (c) setNote(c); });
+  $('triangle').addEventListener('focusin', e => { const c = e.target.closest('.cell'); if (c) setNote(c); });
+  $('triangle').addEventListener('mouseleave', () => setNote(null));
+  $('triangle').addEventListener('click', e => {
+    const c = e.target.closest('.cell'); if (!c) return;
+    const r = +c.dataset.r;
+    if (r !== S.n) setState({ n: r, step: 1 });
+    const again = tri(r, +c.dataset.k); if (again) { setNote(again); again.focus({ preventScroll: true }); }
+  });
+
+  // ---------- walkthrough ----------
+  function renderBuild() {
+    const { a, b, n, mode, step } = S;
+    const T = terms(a, b, n, mode);
+    const hide = s => (step < s ? ' hide' : '');
+    const cell = (s, k, html) => `<td data-k="${k}" class="${hide(s).trim()}">${step < s ? '?' : html}</td>`;
+    const fb = firstBase(a), sb = secondBase(b, mode);
+    const secondVars = k => (mode === 'y' ? [['y', k]] : []);
+    const rows = [
+      ['r-coef', `Row ${n} of the triangle`, 1, t => `${t.C}`],
+      ['r-first', `First term ${fb}, powers going down`, 2, t => `${fb}${sup(t.p)}`],
+      ['r-second', `Second term ${sb}, powers going up`, 3, t => `${sb}${sup(t.k)}`],
+      ['r-simp', `Simplify the powers`, 4, t =>
+        `${t.C} · ${mono(t.A, [['x', t.p]])} · ${mono(t.B, secondVars(t.k))}`],
+      ['r-term', `Multiply → term`, 5, t => mono(t.c, t.vars)],
+    ];
+    $('build').innerHTML = '<tbody>' + rows.map(([cls, label, s, f]) =>
+      `<tr class="${cls}"><th scope="row">${label}</th>${T.map(t => cell(s, t.k, f(t))).join('')}</tr>`).join('') + '</tbody>';
+
+    // steps list
+    document.querySelectorAll('.nval').forEach(el => (el.textContent = n));
+    [...$('steps').children].forEach((li, i) => {
+      li.classList.toggle('done', i + 1 < step);
+      li.classList.toggle('now', i + 1 === step);
+    });
+    $('back').disabled = step <= 1;
+    $('next').disabled = step >= STEPS;
+    $('all').disabled = step >= STEPS;
+
+    // explanation for the current step
+    const ex = {
+      1: `Power ${n} → row ${n}: <b>${P[n].join(', ')}</b>. There are ${n + 1} numbers, so the answer will have ${n + 1} terms.`,
+      2: `The first term starts at the full power ${n} and goes down by 1 each time until it reaches 0.`,
+      3: `The second term starts at power 0 and goes up by 1 until it reaches ${n}. In every column the two exponents add to ${n}.`,
+      4: `Anything to the power 0 is 1.` + (b < 0 ? ` A negative number to an <b>odd</b> power stays negative; to an <b>even</b> power it becomes positive.` : '') +
+         (a !== 1 ? ` Remember to raise the ${num(a)} to the power too, not just the <i>x</i>.` : ''),
+      5: `Multiply the three numbers in each column. Keep the variables.`,
+      6: (b < 0 ? `Because the second term is negative, the signs alternate: +, −, +, − … ` : '') +
+         `Add the terms. Check: there are ${n + 1} terms and the powers of <i>x</i> count down from ${n}.`,
+    };
+    $('explain').innerHTML = `<b>Step ${step}:</b> ${ex[step]}`;
+
+    const ans = $('answer');
+    const done = step >= STEPS;
+    ans.classList.toggle('show', done);
+    ans.innerHTML = `<span class="lbl">Expanded form</span>` +
+      (done ? `${$('expr').innerHTML.replace(/<span[^>]*>|<\/span>/g, '')} = ${polyHTML(T)}` : 'Finish the steps to see the answer.');
+  }
+  // highlight a whole column + its triangle number
+  $('build').addEventListener('mouseover', e => {
+    const td = e.target.closest('td'); clearLit();
+    if (!td) return;
+    const k = td.dataset.k;
+    document.querySelectorAll(`#build td[data-k="${k}"]`).forEach(c => c.classList.add('lit'));
+    const c = tri(S.n, k); if (c) c.classList.add('focus');
+  });
+  $('build').addEventListener('mouseleave', clearLit);
+  function clearLit() {
+    document.querySelectorAll('#build td.lit').forEach(c => c.classList.remove('lit'));
+    document.querySelectorAll('.cell.focus').forEach(c => c.classList.remove('focus'));
+  }
+  $('next').addEventListener('click', () => setState({ step: Math.min(STEPS, S.step + 1) }));
+  $('back').addEventListener('click', () => setState({ step: Math.max(1, S.step - 1) }));
+  $('all').addEventListener('click', () => setState({ step: STEPS }));
+  $('reset').addEventListener('click', () => setState({ step: 1 }));
+
+  function render() { renderExpr(); renderTriangle(); renderBuild(); }
+
+  // ---------- practice ----------
+  let PQ = null;
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  function newProblem() {
+    const mode = Math.random() < .3 ? 'y' : 'num';
+    PQ = { a: pick([1, 1, 1, 2, 3]), b: pick([1, 2, 3, -1, -2, -3]), n: pick([3, 3, 4, 4, 5]), mode };
+    const t1 = mono(PQ.a, [['x', 1]]);
+    const t2 = mode === 'y' ? mono(Math.abs(PQ.b), [['y', 1]]) : num(Math.abs(PQ.b));
+    $('pq').innerHTML = `Expand (${t1} ${PQ.b < 0 ? MINUS : '+'} ${t2})${sup(PQ.n)}`;
+    PQ.T = terms(PQ.a, PQ.b, PQ.n, mode);
+    $('blanks').innerHTML = PQ.T.map((t, i) => {
+      const varPart = t.vars.filter(([, p]) => p > 0).map(([nm, p]) => v(nm) + (p > 1 ? sup(p) : '')).join('');
+      return `${i ? '<span class="plus">+</span>' : ''}<span><input id="pb-${i}" inputmode="numeric" aria-label="coefficient of term ${i + 1}" autocomplete="off">${varPart}</span>`;
+    }).join('');
+    $('pfb').textContent = ''; $('pfb').className = 'feedback';
+  }
+  const parseCoef = s => {
+    s = s.trim().replace(/−/g, '-').replace(/,/g, '');
+    if (s === '' ) return NaN;
+    if (s === '-' ) return -1;
+    if (s === '+') return 1;
+    return Number(s);
+  };
+  $('pcheck').addEventListener('click', () => {
+    let right = 0;
+    PQ.T.forEach((t, i) => {
+      const box = $('pb-' + i); const val = parseCoef(box.value);
+      const ok = val === t.c;
+      box.classList.toggle('right', ok); box.classList.toggle('wrong', !ok);
+      if (ok) right++;
+    });
+    const fb = $('pfb');
+    if (right === PQ.T.length) { fb.textContent = `All ${right} terms are correct!`; fb.className = 'feedback good'; }
+    else {
+      fb.textContent = `${right} of ${PQ.T.length} correct. Fix the red boxes. Hint: start with row ${PQ.n}: ${P[PQ.n].join(', ')}.`;
+      fb.className = 'feedback bad';
+    }
+  });
+  $('pshow').addEventListener('click', () => {
+    setState({ a: PQ.a, b: PQ.b, n: PQ.n, mode: PQ.mode, step: 1 });
+    document.querySelector('.builder').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  $('pnew').addEventListener('click', newProblem);
+
+  // ---------- discovery ----------
+  const xy = n => polyHTML(terms(1, 1, n, 'y'));
+  $('d1-exp').innerHTML = [0, 1, 2, 3].map(n =>
+    `<div><span class="lhs">(<i>x</i> + <i>y</i>)${sup(n)} =</span> ${xy(n)}</div>`).join('');
+  function triInputs(el, rows, prefix) {
+    el.innerHTML = rows.map(r => `<div class="r"><small>row ${r}</small>` +
+      P[r].map((_, k) => `<input id="${prefix}-${r}-${k}" inputmode="numeric" autocomplete="off" aria-label="row ${r}, number ${k + 1}">`).join('') +
+      `</div>`).join('');
+  }
+  triInputs($('d1-tri'), [0, 1, 2, 3], 'd1');
+  // rows 0–3 shown filled in as a reference, rows 4–5 to predict
+  triInputs($('d3-tri'), [0, 1, 2, 3, 4, 5], 'd3');
+  [0, 1, 2, 3].forEach(r => P[r].forEach((x, k) => {
+    const box = $(`d3-${r}-${k}`); box.value = x; box.disabled = true;
+  }));
+
+  function markRows(prefix, rows) {
+    let right = 0, total = 0;
+    rows.forEach(r => P[r].forEach((x, k) => {
+      const box = $(`${prefix}-${r}-${k}`); const ok = parseCoef(box.value) === x;
+      box.classList.toggle('right', ok); box.classList.toggle('wrong', !ok);
+      total++; if (ok) right++;
+    }));
+    return [right, total];
+  }
+  const say = (id, ok, msg) => { const f = $(id); f.textContent = msg; f.className = 'feedback ' + (ok ? 'good' : 'bad'); };
+
+  $('d1-check').addEventListener('click', () => {
+    const [r, t] = markRows('d1', [0, 1, 2, 3]);
+    if (r === t) { say('d1-fb', true, 'All correct! Now look for patterns.'); $('d2').hidden = false; }
+    else say('d1-fb', false, `${r} of ${t} correct. Fix the red boxes.`);
+  });
+  $('d1-help').addEventListener('click', () => { $('d1-hint').hidden = !$('d1-hint').hidden; });
+
+  $('d2-check').addEventListener('click', () => {
+    const val = id => $(id).value;
+    const n = id => parseCoef($(id).value);
+    const checks = [
+      ['q1', val('q1') === 'down'], ['q2', val('q2') === 'up'], ['q3', n('q3') === 3],
+      ['q4', n('q4') === 4], ['q5', val('q5') === 'n1'], ['q6', n('q6') === 1],
+    ];
+    const pair = (a, b, want) => { const s = [n(a), n(b)].sort(); return s[0] === want[0] && s[1] === want[1]; };
+    const p1 = pair('q7', 'q8', [1, 2]), p2 = pair('q9', 'q10', [1, 1]);
+    checks.push(['q7', p1], ['q8', p1], ['q9', p2], ['q10', p2]);
+    let right = 0;
+    checks.forEach(([id, ok]) => { $(id).classList.toggle('right', ok); $(id).classList.toggle('wrong', !ok); if (ok) right++; });
+    if (right === checks.length) {
+      say('d2-fb', true, 'Nice! Each number is the sum of the two above it. Now use that.');
+      $('d3').hidden = false;
+    } else say('d2-fb', false, `${right} of ${checks.length} correct. Fix the red ones.`);
+  });
+  $('d2-help').addEventListener('click', () => { $('d2-hint').hidden = !$('d2-hint').hidden; });
+
+  // (x+y)^n = x·(row n−1) + y·(row n−1), lined up by like terms
+  function renderWhy(n) {
+    const col = j => [['x', n - j], ['y', j]];
+    const xs = [], ys = [], sum = [];
+    for (let j = 0; j <= n; j++) {
+      xs.push(j < n ? mono(P[n - 1][j], col(j)) : '');
+      ys.push(j > 0 ? mono(P[n - 1][j - 1], col(j)) : '');
+      sum.push(mono(P[n][j], col(j)));
+    }
+    const row = (cls, label, cells) => `<tr class="${cls}"><th scope="row">${label}</th>${cells.map(c =>
+      c ? `<td>${c}</td>` : '<td class="empty">·</td>').join('')}</tr>`;
+    $('why').innerHTML = '<tbody>' + row('r-x', `<i>x</i> · (${xy(n - 1)})`, xs) +
+      row('r-y', `<i>y</i> · (${xy(n - 1)})`, ys) + row('r-term', 'Add each column', sum) + '</tbody>';
+  }
+  renderWhy(4);
+
+  function unlock(scroll) {
+    $('locked').hidden = true; $('unlocked').hidden = false;
+    try { localStorage.setItem('pascal-discovered', '1'); } catch (e) {}
+    if (scroll) $('unlocked').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  $('d3-check').addEventListener('click', () => {
+    const [r, t] = markRows('d3', [4, 5]);
+    $('d3-why').hidden = false;
+    if (r === t) { say('d3-fb', true, 'Your predictions are right! Scroll down to use your triangle.'); unlock(false); }
+    else say('d3-fb', false, `${r} of ${t} correct. The table below shows how row 4 is made.`);
+  });
+  $('d3-help').addEventListener('click', () => { $('d3-hint').hidden = !$('d3-hint').hidden; });
+  $('skip').addEventListener('click', () => unlock(true));
+  try { if (localStorage.getItem('pascal-discovered') === '1') unlock(false); } catch (e) {}
+
+  render();
+  newProblem();
+})();
+</script>
+</body>
+</html>
